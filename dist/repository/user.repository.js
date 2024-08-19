@@ -8,13 +8,14 @@ const connection_1 = __importDefault(require("../db/connection"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const time_converter_1 = __importDefault(require("../utils/time-converter"));
-const EXPIRATION_TIME = (0, time_converter_1.default)(60);
+const config_1 = require("../db/config");
+const EXPIRATION_TIME = (0, time_converter_1.default)(config_1.TOKEN_EXPIRATION_TIME);
 const login = async (email, password) => {
     const sql = "SELECT * FROM users WHERE email = ?";
     return new Promise((resolve, reject) => {
         connection_1.default.query(sql, [email], (err, result) => {
             if (err) {
-                reject(err);
+                reject(err.message);
             }
             else {
                 let data = {};
@@ -24,12 +25,12 @@ const login = async (email, password) => {
                 else {
                     data = result[0];
                     const userPassword = data.password;
-                    bcrypt_1.default.compare(password, userPassword, (err, result) => {
+                    bcrypt_1.default.compare(password, userPassword, (err, isMatch) => {
                         if (err) {
-                            resolve(err.message);
+                            reject(err.message);
                         }
                         else {
-                            if (result) {
+                            if (isMatch) {
                                 const token = jsonwebtoken_1.default.sign({
                                     name: data.name,
                                     surname: data.surname,
@@ -71,13 +72,11 @@ const signIn = async (user) => {
                 gender: user.gender,
                 phone: user.phone,
             }, (err, data) => {
-                console.log(data);
                 if (err) {
                     reject(err.message);
                 }
                 else {
                     if (data.affectedRows > 0) {
-                        console.log(data.affectedRows);
                         const sqlUserProgress = "INSERT INTO user_progress (activity_level_id, user_id, total_points, completed, last_date) SELECT activity_levels.id AS activity_level_id, ? AS user_id, 0 AS total_points, 0 AS completed, NOW() AS last_date FROM activity_levels INNER JOIN activity ON activity_levels.activity_id = activity.id WHERE activity_levels.id NOT IN (SELECT DISTINCT activity_level_id FROM user_progress WHERE user_id = ?) AND activity_levels.id IS NOT NULL";
                         const userId = data.insertId;
                         connection_1.default.query(sqlUserProgress, [userId, userId], (err, result) => {
@@ -88,14 +87,20 @@ const signIn = async (user) => {
                                 if (result.affectedRows > 0) {
                                     resolve({ msg: "Successfully registered", data: true });
                                 }
+                                else {
+                                    resolve({ msg: "Registration failed", data: false });
+                                }
                             }
                         });
+                    }
+                    else {
+                        resolve({ msg: "Registration failed", data: false });
                     }
                 }
             });
         })
             .catch((err) => {
-            console.log(err.message);
+            reject(err.message);
         });
     });
 };
@@ -111,13 +116,13 @@ const update = async (user, newPassword) => {
                     reject("Invalid user");
                 }
                 else {
-                    const updateData = user;
-                    bcrypt_1.default.compare(user.password, result[0].password, (err, result) => {
+                    const updateData = { ...user };
+                    bcrypt_1.default.compare(user.password, result[0].password, (err, isMatch) => {
                         if (err) {
-                            resolve(err.message);
+                            reject(err.message);
                         }
                         else {
-                            if (result) {
+                            if (isMatch) {
                                 if (newPassword) {
                                     bcrypt_1.default.hash(newPassword, 10).then((hash) => {
                                         updateData.password = hash;
@@ -128,6 +133,9 @@ const update = async (user, newPassword) => {
                                             else {
                                                 if (data.affectedRows > 0) {
                                                     resolve({ msg: true });
+                                                }
+                                                else {
+                                                    resolve({ msg: false });
                                                 }
                                             }
                                         });
@@ -140,9 +148,12 @@ const update = async (user, newPassword) => {
                                             reject(err.message);
                                         }
                                         else {
-                                            resolve({
-                                                msg: true,
-                                            });
+                                            if (data.affectedRows > 0) {
+                                                resolve({ msg: true });
+                                            }
+                                            else {
+                                                resolve({ msg: false });
+                                            }
                                         }
                                     });
                                 }

@@ -1,5 +1,6 @@
-import mysql from "mysql";
+import mysql from "mysql2";
 import { DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER } from "./config";
+import { URL } from "url";
 
 class DatabaseConnection {
   private static instance: DatabaseConnection;
